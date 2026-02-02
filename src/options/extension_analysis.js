@@ -9,7 +9,7 @@ import { els } from "./dom";
 
 export function initExtensionAnalysis() {
   if (els.extAnalyzeBtn) {
-    els.extAnalyzeBtn.addEventListener("click", analyzeExtension);
+    els.extAnalyzeBtn.addEventListener("click", analyzeCallback);
   }
   if (els.codeCopyBtn) {
     els.codeCopyBtn.addEventListener("click", copyCodeCallback);
@@ -26,76 +26,64 @@ let currentExtensionId = null,
   currentFile = null;
 
 /* =========================
-   Analyze
-========================= */
-
-async function analyzeExtension() {
-  const id = els.extensionIdInput.value.trim();
-  if (!id) return;
-
-  els.extAnalysisOutput.textContent = "Processing CRX...";
-  els.directoryTree.innerHTML = "";
-  els.directoryFileViewer.querySelector("pre").textContent = "";
-
-  try {
-    const url =
-      `https://clients2.google.com/service/update2/crx` +
-      `?response=redirect&prodversion=120.0` +
-      `&acceptformat=crx3` +
-      `&x=id%3D${id}%26installsource%3Dondemand%26uc`;
-
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("Download failed");
-
-    const buffer = await res.arrayBuffer();
-    const zipData = stripCrxHeader(buffer);
-
-    extractedZip = await JSZip.loadAsync(zipData);
-    currentExtensionId = id;
-
-    els.extAnalysisOutput.textContent = "";
-    els.downloadExtSourceCode.disabled = false;
-    els.downloadExtSourceCode.onclick = downloadZip;
-
-    renderFileTree(extractedZip);
-    attachManifestAnalyzer();
-  } catch (err) {
-    els.extAnalysisOutput.textContent = String(err);
-  }
-}
-
-/* =========================
    CRX handling
 ========================= */
 
 function stripCrxHeader(buffer) {
+  if (buffer.byteLength < 4) {
+    throw new Error("File too small to be a CRX");
+  }
+
   const view = new DataView(buffer);
 
-  const magic = String.fromCharCode(
-    view.getUint8(0),
-    view.getUint8(1),
-    view.getUint8(2),
-    view.getUint8(3),
-  );
+  const magic =
+    String.fromCharCode(view.getUint8(0)) +
+    String.fromCharCode(view.getUint8(1)) +
+    String.fromCharCode(view.getUint8(2)) +
+    String.fromCharCode(view.getUint8(3));
 
   if (magic !== "Cr24") {
-    throw new Error("Invalid CRX file");
+    throw new Error("Invalid CRX magic header");
+  }
+
+  if (buffer.byteLength < 8) {
+    throw new Error("CRX header truncated");
   }
 
   const version = view.getUint32(4, true);
 
   if (version === 2) {
+    if (buffer.byteLength < 16) {
+      throw new Error("CRX2 header truncated");
+    }
+
     const keyLen = view.getUint32(8, true);
     const sigLen = view.getUint32(12, true);
-    return buffer.slice(16 + keyLen + sigLen);
+    const offset = 16 + keyLen + sigLen;
+
+    if (buffer.byteLength < offset) {
+      throw new Error("CRX2 payload truncated");
+    }
+
+    return buffer.slice(offset);
   }
 
   if (version === 3) {
+    if (buffer.byteLength < 12) {
+      throw new Error("CRX3 header truncated");
+    }
+
     const headerSize = view.getUint32(8, true);
-    return buffer.slice(12 + headerSize);
+    const offset = 12 + headerSize;
+
+    if (buffer.byteLength < offset) {
+      throw new Error("CRX3 payload truncated");
+    }
+
+    return buffer.slice(offset);
   }
 
-  throw new Error("Unsupported CRX version");
+  throw new Error(`Unsupported CRX version ${version}`);
 }
 
 /* =========================
@@ -214,9 +202,6 @@ async function copyCodeCallback() {
 /* =========================
    Manifest analysis UI + AI integration
 ========================= */
-/* =========================
-   Gemini helper (client-side)
-========================= */
 
 /* =========================
    Gemini helper (client-side)
@@ -261,7 +246,7 @@ Important rules for classification:
 1) Consider the manifest and locale messages together as the extension intent.
 2) For host permissions, interpret patterns literally:
    - exact hosts like https://api.example.com/* are lower risk if they match the extension purpose.
-   - wildcard hosts like *://*/* or https://*/ are high risk and should be suspicious or danger.
+   - wildcard hosts like *://*/* or https://*/ are risk and should be suspicious or danger.
    - large scopes like "://*.com/*" are overbroad and should be suspicious or danger unless the description clearly justifies it.
 3) For content_scripts matches, judge whether the listed sites align with the extension intent. If content scripts target a narrow set of sites that match the description, that lowers suspicion.
 4) Optional permissions should be treated less severe than required permissions but still evaluated.
@@ -288,58 +273,6 @@ Return ONLY valid JSON matching this schema. Do not include any explanation or t
 `.trim();
 }
 
-async function geminiAnalyzePermissions({ apiKey, manifest, messages }) {
-  const permissions = [
-    ...(manifest.permissions || []),
-    ...(manifest.host_permissions || []),
-    ...(manifest.optional_permissions || []),
-  ];
-
-  const permsText = permissions.length
-    ? permissions.map((p) => `- ${p}`).join("\n")
-    : "none";
-
-  const localeMessagesText = messages
-    ? Object.entries(messages)
-        .map(([k, v]) => `${k}: "${(v.message || "").replace(/\n/g, "\\n")}"`)
-        .join("\n")
-    : "";
-
-  const prompt = buildAIManifestPrompt(manifest, permsText, localeMessagesText);
-
-  return await generateGeminiResponse({
-    apiKey,
-    prompt,
-    enableSearch: true,
-  });
-}
-
-// Attach analyzer whenever extractedZip is available.
-export async function attachManifestAnalyzer() {
-  // clear previous UI
-  const container = els.analysisContainer;
-  if (!container) return;
-
-  // try to find manifest.json
-  const manifest = await findManifestJson();
-  if (!manifest) {
-    container
-      .querySelector(".ai-header")
-      .insertAdjacentHTML(
-        "beforeend",
-        `<div style="color:#666;font-size:13px">No manifest.json found</div>`,
-      );
-    return;
-  }
-
-  // Render manifest basic info
-  populateManifestUI(manifest);
-
-  const { messages } = await findOneLocaleMessages();
-  // trigger an automatic AI scan in background
-  triggerAICheck(manifest, messages);
-}
-
 async function findManifestJson() {
   if (!extractedZip) return null;
   const manifestPaths = [
@@ -362,14 +295,7 @@ async function findManifestJson() {
   return null;
 }
 async function findOneLocaleMessages() {
-  if (!extractedZip) return null;
-
-  // First try the default locale from manifest.json
-  const manifestEntry = await findManifestJson();
-  let defaultLocale = null;
-  try {
-    defaultLocale = manifestEntry?.default_locale || null;
-  } catch {}
+  if (!extractedZip) return { messages: null };
 
   // Helper to try loading a messages.json for a given locale code
   const loadLocaleJson = async (locale) => {
@@ -382,14 +308,25 @@ async function findOneLocaleMessages() {
         console.warn("Failed to parse locale messages", path, err);
       }
     }
-    return null;
+    return { messages: null };
   };
+
+  // First try the default locale from manifest.json
+  const manifestEntry = await findManifestJson();
+  let defaultLocale = null;
+  try {
+    defaultLocale = manifestEntry?.default_locale || null;
+  } catch (error) {
+    console.log("error", error);
+  }
 
   if (defaultLocale) {
     const localeData = await loadLocaleJson(defaultLocale);
     if (localeData) {
       return { locale: defaultLocale, messages: localeData };
     }
+  } else {
+    return { messages: null }; // no default means no messages. CHROME enforces default
   }
 
   // If no default found or no file there, find any locale folder
@@ -411,7 +348,7 @@ async function findOneLocaleMessages() {
     }
   }
 
-  return null;
+  return { messages: null };
 }
 
 function populateManifestUI(manifest) {
@@ -451,16 +388,93 @@ function populateManifestUI(manifest) {
     const row = document.createElement("div");
     row.className = "permission-row";
     row.innerHTML = `
-      <div class="permission-name" data-perm="${permName}">
+      <div class="permission-name" data-perm="${permName.split(" (optional)")[0]}">
         <span style="opacity:0.7">▹</span>
         <span>${permName}</span>
       </div>
       <div>
-        <div class="perm-status unknown" data-perm="${permName}">pending</div>
+        <div class="perm-status unknown" data-perm="${permName.split(" (optional)")[0]}">pending</div>
       </div>
-      <div class="permission-reason" data-perm-reason="${permName}" style="display:none"></div>
+      <div class="permission-reason" data-perm-reason="${permName.split(" (optional)")[0]}" style="display:none"></div>
     `;
     permListElem.appendChild(row);
+  });
+}
+
+function applyAIVerdicts(data) {
+  if (!data || !Array.isArray(data.verdicts)) return;
+  for (const v of data.verdicts) {
+    const perm = String(v.permission);
+    const verdict = (v.verdict || "unknown").toLowerCase();
+    const reason = v.reason || "";
+
+    const statusElem = document.querySelector(
+      `.perm-status[data-perm="${escapeSelector(perm)}"]`,
+    );
+    const permReasonElem = document.querySelector(
+      `.permission-reason[data-perm-reason="${escapeSelector(perm)}"]`,
+    );
+    const permNameElem = document.querySelector(
+      `.permission-name[data-perm="${escapeSelector(perm)}"]`,
+    );
+
+    if (!statusElem) {
+      // try to match normalized permission text
+      // skip if not found
+      continue;
+    }
+
+    statusElem.classList.remove("unknown", "ok", "suspicious"); //danger
+    if (verdict === "ok") {
+      statusElem.classList.add("ok");
+      statusElem.textContent = "ok";
+    } else if (verdict === "suspicious") {
+      statusElem.classList.add("suspicious");
+      statusElem.textContent = "suspicious";
+      if (permNameElem) permNameElem.style.borderLeft = "3px solid #ff9900";
+    } else if (verdict === "danger" || verdict === "dangerous") {
+      statusElem.classList.add("suspicious"); //danger
+      statusElem.textContent = "suspicious";
+      if (permNameElem) permNameElem.style.borderLeft = "3px solid #ff9900"; //#c53030";
+    } else {
+      statusElem.textContent = verdict;
+    }
+
+    if (permReasonElem) {
+      if (reason) {
+        permReasonElem.style.display = "block";
+        permReasonElem.textContent = reason;
+      } else {
+        permReasonElem.style.display = "none";
+      }
+    }
+  }
+}
+
+async function geminiAnalyzePermissions({ apiKey, manifest, messages }) {
+  //combine this and below function
+  const permissions = [
+    ...(manifest.permissions || []),
+    ...(manifest.host_permissions || []),
+    ...(manifest.optional_permissions || []),
+  ];
+
+  const permsText = permissions.length
+    ? permissions.map((p) => `- ${p}`).join("\n")
+    : "none";
+
+  const localeMessagesText = messages
+    ? Object.entries(messages)
+        .map(([k, v]) => `${k}: "${(v.message || "").replace(/\n/g, "\\n")}"`)
+        .join("\n")
+    : "";
+
+  const prompt = buildAIManifestPrompt(manifest, permsText, localeMessagesText);
+
+  return await generateGeminiResponse({
+    apiKey,
+    prompt,
+    enableSearch: true,
   });
 }
 
@@ -499,53 +513,85 @@ async function triggerAICheck(manifest, messages) {
   }
 }
 
-function applyAIVerdicts(data) {
-  if (!data || !Array.isArray(data.verdicts)) return;
-  for (const v of data.verdicts) {
-    const perm = String(v.permission);
-    const verdict = (v.verdict || "unknown").toLowerCase();
-    const reason = v.reason || "";
+// Attach analyzer whenever extractedZip is available.
+export async function attachManifestAnalyzer() {
+  // clear previous UI
+  const container = els.analysisContainer;
+  if (!container) return;
 
-    const statusElem = document.querySelector(
-      `.perm-status[data-perm="${escapeSelector(perm)}"]`,
-    );
-    const permReasonElem = document.querySelector(
-      `.permission-reason[data-perm-reason="${escapeSelector(perm)}"]`,
-    );
-    const permNameElem = document.querySelector(
-      `.permission-name[data-perm="${escapeSelector(perm)}"]`,
-    );
+  // try to find manifest.json
+  const manifest = await findManifestJson();
+  if (!manifest) {
+    container
+      .querySelector(".ai-header")
+      .insertAdjacentHTML(
+        "beforeend",
+        `<div style="color:#666;font-size:13px">No manifest.json found</div>`,
+      );
+    return;
+  }
 
-    if (!statusElem) {
-      // try to match normalized permission text
-      // skip if not found
-      continue;
+  // Render manifest basic info
+  populateManifestUI(manifest);
+
+  const { messages } = await findOneLocaleMessages();
+  console.log(messages);
+  // trigger an automatic AI scan in background
+  triggerAICheck(manifest, messages);
+}
+
+/* =========================
+   Analyze
+========================= */
+
+async function analyzeCallback() {
+  const id = els.extensionIdInput.value.trim();
+  if (!id) return;
+
+  els.extAnalysisOutput.textContent = "Processing CRX...";
+  els.directoryTree.innerHTML = "";
+  els.directoryFileViewer.querySelector("pre").textContent = "";
+
+  try {
+    const url = "https://clients2.google.com/service/update2/crx";
+
+    const body =
+      `response=redirect` +
+      `&prodversion=121.0.0.0` +
+      `&acceptformat=crx3` +
+      `&x=id%3D${id}%26installsource%3Dondemand%26uc`;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+    });
+
+    if (!res.ok) {
+      throw new Error("CRX download failed");
     }
 
-    statusElem.classList.remove("unknown", "ok", "suspicious", "danger");
-    if (verdict === "ok") {
-      statusElem.classList.add("ok");
-      statusElem.textContent = "ok";
-    } else if (verdict === "suspicious") {
-      statusElem.classList.add("suspicious");
-      statusElem.textContent = "suspicious";
-      if (permNameElem) permNameElem.style.borderLeft = "3px solid #ff9900";
-    } else if (verdict === "danger" || verdict === "dangerous") {
-      statusElem.classList.add("danger");
-      statusElem.textContent = "danger";
-      if (permNameElem) permNameElem.style.borderLeft = "3px solid #c53030";
-    } else {
-      statusElem.textContent = verdict;
+    const buffer = await res.arrayBuffer();
+
+    if (buffer.byteLength < 16) {
+      throw new Error("Downloaded file is not a valid CRX");
     }
 
-    if (permReasonElem) {
-      if (reason) {
-        permReasonElem.style.display = "block";
-        permReasonElem.textContent = reason;
-      } else {
-        permReasonElem.style.display = "none";
-      }
-    }
+    const zipData = stripCrxHeader(buffer);
+
+    extractedZip = await JSZip.loadAsync(zipData);
+    currentExtensionId = id;
+
+    els.extAnalysisOutput.textContent = "";
+    els.downloadExtSourceCode.disabled = false;
+    els.downloadExtSourceCode.onclick = downloadZip;
+
+    renderFileTree(extractedZip);
+    attachManifestAnalyzer();
+  } catch (err) {
+    els.extAnalysisOutput.textContent = String(err);
   }
 }
 
@@ -561,5 +607,6 @@ function escapeHtml(s) {
 // CSS selector safe escape for dataset matching
 function escapeSelector(s) {
   // we are using the dataset attributes containing permission text which can include slashes and colons
-  return CSS.escape(s);
+  const res = s.split(" (optional)")[0];
+  return CSS.escape(res);
 }
