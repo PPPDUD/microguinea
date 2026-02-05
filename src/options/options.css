@@ -762,7 +762,7 @@ body[data-scope="active"] td.colTabCell {
 }
 
 .analysis-bullet-list li {
-    margin: 4px 0;
+    margin: 6px 0;
     font-family: monospace;
     font-size: 13px;
     color: #222;

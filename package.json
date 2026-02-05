@@ -22,9 +22,7 @@
     "webpack-dev-server": "^5.1.0"
   },
   "dependencies": {
-    "@babel/types": "^7.29.0",
     "@google/genai": "^1.38.0",
-    "acorn": "^8.15.0",
     "jszip": "^3.10.1",
     "terser-webpack-plugin": "^5.3.10"
   }
