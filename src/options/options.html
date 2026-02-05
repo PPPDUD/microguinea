@@ -371,7 +371,7 @@
                                 Extension ID
                                 <br />
                                 <code>
-                                    chromewebstore.google.com/detail/extension_name/{extension_id}
+                                    chromewebstore.google.com/.../.../{extension_id}
                                 </code>
                             </label>
                             <input
@@ -395,7 +395,7 @@
                             Copy Code
                         </button>
                     </div>
-                    <div id="output"></div>
+                    <span id="output"></span>
                     <div class="directory-container">
                         <div id="directory-tree">
                             <template id="file-template">
@@ -418,17 +418,38 @@
                                 </div>
                             </div>
                         </div>
+
                         <div
                             class="ai-summary"
                             style="color: #444; font-size: 13px"
                         >
                             IDLE
                         </div>
-                        <div
-                            class="analysis-permissions"
-                            id="ai-permissions-list"
-                            style="margin-top: 12px"
-                        ></div>
+
+                        <!-- TWO COLUMN GRID -->
+                        <div class="analysis-grid">
+                            <!-- LEFT: manifest permissions -->
+                            <div class="analysis-column">
+                                <h3 class="analysis-column-title">
+                                    manifest.js
+                                </h3>
+                                <div
+                                    class="analysis-permissions"
+                                    id="ai-permissions-list"
+                                ></div>
+                            </div>
+
+                            <!-- RIGHT: background.js fetch analysis -->
+                            <div class="analysis-column">
+                                <h3 class="analysis-column-title">
+                                    service_workers.js
+                                </h3>
+                                <div
+                                    class="analysis-serviceworker"
+                                    id="ai-serviceworker-list"
+                                ></div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 

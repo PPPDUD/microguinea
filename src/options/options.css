@@ -602,6 +602,30 @@ body[data-scope="active"] td.colTabCell {
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
 }
 
+/* two-column layout */
+.analysis-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 12px;
+}
+
+/* column wrapper */
+.analysis-column {
+    border: 1px solid #f0f0f0;
+    border-radius: 6px;
+    padding: 10px;
+    background: #fafafa;
+}
+
+/* column titles */
+.analysis-column-title {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+
 /* Header row */
 .analysis-info-container .ai-header {
     display: flex;
@@ -618,16 +642,20 @@ body[data-scope="active"] td.colTabCell {
 }
 
 /* permissions list */
-.analysis-permissions {
-    display: grid;
-    grid-template-columns: 1fr 120px;
+.analysis-permissions,
+.analysis-serviceworker {
+    display: flex;
+    flex-direction: column;
     gap: 8px 12px;
     align-items: center;
-    margin-top: 10px;
 }
 
 .permission-row {
-    display: contents;
+    display: flex;
+    flex-wrap: wrap;
+
+    inline-size: 100%;
+    margin-block-start: 9px;
 }
 
 .permission-name {
@@ -637,9 +665,9 @@ body[data-scope="active"] td.colTabCell {
     padding: 8px;
     border-radius: 6px;
     background: #fafafa;
-    border: 1px solid #f0f0f0;
     font-family: monospace;
     word-break: break-all;
+    inline-size: 70%;
 }
 
 /* status chips */
@@ -652,6 +680,8 @@ body[data-scope="active"] td.colTabCell {
     border-radius: 999px;
     font-size: 12px;
     font-weight: 600;
+
+    margin-left: auto;
 }
 
 /* normal ok */
@@ -682,6 +712,8 @@ body[data-scope="active"] td.colTabCell {
     color: #444;
     font-size: 12px;
     padding-left: 8px;
+
+    inline-size: 100%;
 }
 
 /* controls and spinner */
@@ -720,6 +752,21 @@ body[data-scope="active"] td.colTabCell {
     font-size: 13px;
     color: #333;
     white-space: pre-wrap;
+}
+
+.analysis-bullet-list {
+    margin: 0;
+    padding-left: 18px;
+    list-style-type: disc;
+    inline-size: 100%;
+}
+
+.analysis-bullet-list li {
+    margin: 4px 0;
+    font-family: monospace;
+    font-size: 13px;
+    color: #222;
+    word-break: break-all;
 }
 
 /* =========================

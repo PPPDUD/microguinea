@@ -4,7 +4,7 @@ const MAX_PER_TAB = 300;
 // Cache: ruleId -> action.type (dynamic + session only)
 // let actionTypeByRuleId = new Map();
 
-const SAFE_BROWSING_API_KEY = "";
+const SAFE_BROWSING_API_KEY = "AIzaSyDQb-1deWH2EAKitfCIwkis8dQZ57mqxXQ";
 const SAFE_BROWSING_ENDPOINT =
   "https://safebrowsing.googleapis.com/v4/threatMatches:find";
 const SAFE_CACHE_TTL = 23 * 60 * 60 * 1000; // 23 hours
@@ -14,7 +14,6 @@ const safeCache = new Map(); // url -> { unsafe: boolean, ts }
 
 async function checkUrlWithSafeBrowsing(url) {
   const now = Date.now();
-  console.log("safeCache", safeCache);
 
   // cache hit
   const cached = safeCache.get(url);
@@ -292,7 +291,6 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 // Listen for new tabs or reloads to inform content script
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  console.log(changeInfo, tab, "changeInfo");
   if (changeInfo.status !== "complete") return;
   if (!tab.url || tab.url.startsWith("chrome")) return;
 

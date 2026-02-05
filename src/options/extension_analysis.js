@@ -120,7 +120,6 @@ async function downloadZip() {
 ========================= */
 
 function renderFileTree(zip) {
-  console.log(zip, "zio");
   const tree = {};
 
   Object.keys(zip.files).forEach((path) => {
@@ -229,7 +228,7 @@ async function generateGeminiResponse({ apiKey, prompt, enableSearch = true }) {
 
 function buildAIManifestPrompt(manifest, permsText, localeMessagesText) {
   return `
-You are a security focused assistant analyzing a Chrome extension. Use the resolved manifest fields and the provided locale messages for context.
+You are acting as a joint review panel consisting of senior Chrome extension developers, red team security analysts, privacy engineers, and incident response specialists. Evaluate permissions conservatively and from a defense perspective.
 
 Extension details:
 name: ${manifest.name || "N/A"}
@@ -242,23 +241,24 @@ ${localeMessagesText || "(none provided)"}
 Declared permissions:
 ${permsText}
 
-Important rules for classification:
-1) Consider the manifest and locale messages together as the extension intent.
-2) For host permissions, interpret patterns literally:
-   - exact hosts like https://api.example.com/* are lower risk if they match the extension purpose.
-   - wildcard hosts like *://*/* or https://*/ are risk and should be suspicious or danger.
-   - large scopes like "://*.com/*" are overbroad and should be suspicious or danger unless the description clearly justifies it.
-3) For content_scripts matches, judge whether the listed sites align with the extension intent. If content scripts target a narrow set of sites that match the description, that lowers suspicion.
-4) Optional permissions should be treated less severe than required permissions but still evaluated.
-5) If a permission could allow reading or modifying user content or network traffic and no clear justification exists, mark it danger.
-6) Keep each reason brief, 15 to 80 characters, and concrete.
-7) Be conservative: when in doubt, mark suspicious rather than ok.
+Important evaluation rules:
+1) Treat the manifest and locale messages together as the stated extension intent.
+2) Judge permissions strictly by least privilege principles.
+3) For host permissions, interpret patterns literally:
+   - exact hosts like https://api.example.com/* are lower risk if aligned with purpose.
+   - wildcard hosts like *://*/* or https://*/ are high risk.
+   - broad scopes like "://*.com/*" are overbroad unless strongly justified.
+4) For content_scripts matches, verify site scope matches the described intent.
+5) Optional permissions are lower severity but still require justification.
+6) If a permission enables reading, modifying, or exfiltrating user data without clear need, mark danger.
+7) Keep each reason concrete and brief, 15–80 characters.
+8) Be conservative: when unsure, prefer suspicious over ok.
 
 Task:
-For every declared permission and host pattern, produce one verdict entry. Include optional permissions with "(optional)" appended to their permission string so they are evaluated separately.
+For every declared permission and host pattern, produce exactly one verdict entry. Include optional permissions with "(optional)" appended so they are evaluated separately.
 
 Output format:
-Return ONLY valid JSON matching this schema. Do not include any explanation or text outside the JSON object.
+Return ONLY valid JSON. No explanation or text outside the JSON object.
 
 {
   "verdicts": [
@@ -268,19 +268,198 @@ Return ONLY valid JSON matching this schema. Do not include any explanation or t
       "reason": "<short explanation, 15-80 chars>"
     }
   ],
-  "summary": "<one-line summary>"
+  "summary": "<one-line overall risk summary>"
 }
 `.trim();
 }
 
+function buildAIServiceWorkerPrompt(
+  manifest,
+  permsText,
+  localeMessagesText,
+  fetchCallsText,
+) {
+  return `
+You are a collaborative team: red team security analysts, national incident responders, and experienced extension developers. Your mission is to analyze each service worker network call and produce a short, conservative verdict and reason grounded in the manifest, declared permissions, and locale messages.
+
+Extension context:
+name: ${manifest.name || "N/A"}
+version: ${manifest.version || "N/A"}
+description: ${manifest.description || "N/A"}
+
+Locale messages:
+${localeMessagesText || "(none provided)"}
+
+Declared permissions and hosts:
+${permsText || "none"}
+
+Service worker fetch calls (array):
+${fetchCallsText || "none"}
+
+Analysis instructions:
+1) For every fetch call element produce one analysis entry keyed by the 'id' value.
+2) Use manifest, host_permissions, and permissions to judge whether the call is expected for the extension purpose.
+3) If host is not covered by host_permissions mark higher risk.
+4) POST requests carrying profile, credentials, or user data with auth are high risk.
+5) GET requests to analytics or telemetry endpoints may be ok but still note privacy risk.
+6) Ternary or concatenated URL expressions should be evaluated conservatively: if any branch sends data to an external API and no justification exists then raise suspicion.
+7) Keep each reason brief and concrete, 15 to 80 characters.
+9) Be conservative: when unsure, prefer suspicious over ok.
+10) Return ONLY valid JSON that exactly matches the schema below. Do not include any extra text, commentary, or markup.
+
+Output schema:
+Return only this JSON object.
+
+{
+  "analysis": [
+    {
+      "key": "id",
+      "verdict": "ok" | "suspicious" | "danger",
+      "reason": "<short concrete reason, 15-80 chars>",
+    }
+  ],
+  "summary": "<one-line summary of overall risk>",
+  "recommendation": "<one-line remediation or investigation step>"
+}
+
+Examples of guidance to use:
+- If host matches manifest host_permissions and purpose matches description, lean ok.
+- If request is POST with Authorization header and profile or personally identifying fields, mark danger.
+- If request uses wide host patterns like *://*/* or large scopes, mark suspicious or danger.
+- If headers or body are obfuscated but show profile or token patterns, mark suspicious.
+- If multiple distinct calls target same external domain, mention that in summary.
+
+Strict formatting rules:
+- Reasons must be 15 to 80 characters.
+- All values must be strings except verdict which must be one of the specified tokens.
+- Return pure JSON only. No surrounding text, no markdown, no commentary.
+`.trim();
+}
+
+function extractFetchCallsFromBundle(code) {
+  // const results = [];
+  // let i = 0;
+  // function tryResolveInlineUrl(expr) {
+  //   // match: <something>.concat(a, b, c)
+  //   const concatMatch = expr.match(/\.concat\((.*)\)$/);
+  //   if (!concatMatch) return null;
+  //   const argsRaw = concatMatch[1];
+  //   const args = argsRaw
+  //     .split(/,(?![^()]*\))/)
+  //     .map((s) => s.trim())
+  //     .map((s) => {
+  //       // strip quotes if literal
+  //       if (
+  //         (s.startsWith('"') && s.endsWith('"')) ||
+  //         (s.startsWith("'") && s.endsWith("'"))
+  //       ) {
+  //         return s.slice(1, -1);
+  //       }
+  //       return null;
+  //     });
+  //   if (args.some((a) => a === null)) return null;
+  //   const result = args.join("");
+  //   if (result.includes("http")) return result;
+  //   return null;
+  // }
+  // while ((i = code.indexOf("fetch(", i)) !== -1) {
+  //   let start = i + 6;
+  //   let depth = 1;
+  //   let j = start;
+  //   // find end of fetch(...)
+  //   while (j < code.length && depth > 0) {
+  //     if (code[j] === "(") depth++;
+  //     else if (code[j] === ")") depth--;
+  //     j++;
+  //   }
+  //   const fetchCall = code.slice(i, j);
+  //   // URL expression (variable or literal)
+  //   const urlExpression =
+  //     fetchCall.match(/fetch\s*\(\s*([^,]+),/)?.[1]?.trim() || null;
+  //   // resolve variable URL if possible
+  //   let resolvedUrlExpression = null;
+  //   // 1. Inline concat resolution
+  //   if (urlExpression) {
+  //     resolvedUrlExpression = tryResolveInlineUrl(urlExpression);
+  //   }
+  //   // 2. Variable resolution fallback
+  //   if (
+  //     !resolvedUrlExpression &&
+  //     urlExpression &&
+  //     /^[a-zA-Z_$][\w$]*$/.test(urlExpression)
+  //   ) {
+  //     const name = urlExpression.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  //     // match ANY assignment expression: u = <expr>
+  //     const assignRe = new RegExp(
+  //       `${name}\\s*=\\s*([^;\\n\\r,)]+(?:\\([^)]*\\)[^;\\n\\r,)]*)?)`,
+  //       "g",
+  //     );
+  //     const before = code.slice(0, i);
+  //     let match;
+  //     while ((match = assignRe.exec(before))) {
+  //       const candidate = match[1].trim();
+  //       // must look URL-like
+  //       if (candidate.includes("http") || candidate.includes("://")) {
+  //         resolvedUrlExpression = candidate;
+  //       }
+  //     }
+  //   }
+  //   const method = fetchCall.match(/method\s*:\s*["'](\w+)["']/)?.[1] || "GET";
+  //   const headers =
+  //     fetchCall.match(/headers\s*:\s*\{([\s\S]*?)\}/)?.[1]?.trim() || null;
+  //   // body extraction (fixed)
+  //   let bodyExpression = null;
+  //   const bodyIdx = fetchCall.indexOf("body:");
+  //   if (bodyIdx !== -1) {
+  //     let k = bodyIdx + 5;
+  //     while (fetchCall[k] === " ") k++;
+  //     let parenDepth = 0;
+  //     let braceDepth = 0;
+  //     let seenOpen = false;
+  //     const startBody = k;
+  //     let endBody = k;
+  //     while (endBody < fetchCall.length) {
+  //       const ch = fetchCall[endBody];
+  //       if (ch === "(") {
+  //         parenDepth++;
+  //         seenOpen = true;
+  //       } else if (ch === ")") {
+  //         parenDepth--;
+  //       } else if (ch === "{") {
+  //         braceDepth++;
+  //         seenOpen = true;
+  //       } else if (ch === "}") {
+  //         braceDepth--;
+  //       }
+  //       if (seenOpen && parenDepth === 0 && braceDepth === 0) {
+  //         endBody++;
+  //         break;
+  //       }
+  //       endBody++;
+  //     }
+  //     bodyExpression = fetchCall.slice(startBody, endBody).trim();
+  //   }
+  //   results.push({
+  //     // urlExpression,
+  //     id: Math.floor(new Date().getTime() * Math.random()).toString(16),
+  //     resolvedUrlExpression,
+  //     method,
+  //     headers,
+  //     bodyExpression,
+  //   });
+  //   i = j;
+  // }
+  // return results;
+}
+
 async function findManifestJson() {
   if (!extractedZip) return null;
-  const manifestPaths = [
-    "manifest.json",
-    "src/manifest.json",
-    "dist/manifest.json",
-    "app/manifest.json",
-  ];
+  // const manifestPaths = [
+  //   "manifest.json",
+  //   "src/manifest.json",
+  //   "dist/manifest.json",
+  //   "app/manifest.json",
+  // ];
   for (const p of Object.keys(extractedZip.files)) {
     if (p.toLowerCase().endsWith("manifest.json")) {
       try {
@@ -350,16 +529,71 @@ async function findOneLocaleMessages() {
 
   return { messages: null };
 }
+async function findServiceWorkerFiles(manifest) {
+  if (!extractedZip) return [];
+  if (!manifest) return [];
+
+  const workerPaths = new Set();
+
+  // MV3
+  if (
+    manifest.background &&
+    typeof manifest.background.service_worker === "string"
+  ) {
+    workerPaths.add(manifest.background.service_worker);
+  }
+
+  // MV2
+  if (manifest.background && Array.isArray(manifest.background.scripts)) {
+    for (const script of manifest.background.scripts) {
+      if (typeof script === "string" && script.endsWith(".js")) {
+        workerPaths.add(script);
+      }
+    }
+  }
+
+  const results = [];
+
+  for (const workerPath of workerPaths) {
+    let file = extractedZip.files[workerPath];
+
+    // fallback: search by filename only
+    if (!file) {
+      const name = workerPath.split("/").pop();
+      for (const p of Object.keys(extractedZip.files)) {
+        if (p === name || p.endsWith("/" + name)) {
+          file = extractedZip.files[p];
+          break;
+        }
+      }
+    }
+
+    if (!file) continue;
+
+    try {
+      const source = await file.async("text");
+      results.push({
+        path: workerPath,
+        source,
+      });
+    } catch (err) {
+      console.warn("failed to read service worker", workerPath, err);
+    }
+  }
+
+  return results;
+}
 
 function populateManifestUI(manifest) {
   const summary = [];
   if (manifest.version) summary.push(`v${escapeHtml(manifest.version)}`);
   const summaryHTML = `<div style="margin-top:8px;color:#333;font-size:13px">${summary.join(" ")} </div>`;
-  const container = document.querySelector(".analysis-info-container");
-  container.querySelector(".ai-summary").innerHTML = summaryHTML;
+  els.analysisContainer.querySelector(".ai-summary").innerHTML = summaryHTML;
 
   // permissions
-  const permListElem = container.querySelector("#ai-permissions-list");
+  const permListElem = els.analysisContainer.querySelector(
+    "#ai-permissions-list",
+  );
   permListElem.innerHTML = "";
 
   let perms = [];
@@ -392,18 +626,182 @@ function populateManifestUI(manifest) {
         <span style="opacity:0.7">▹</span>
         <span>${permName}</span>
       </div>
-      <div>
-        <div class="perm-status unknown" data-perm="${permName.split(" (optional)")[0]}">pending</div>
-      </div>
+      <div class="perm-status unknown" data-perm="${permName.split(" (optional)")[0]}">pending</div>
+
       <div class="permission-reason" data-perm-reason="${permName.split(" (optional)")[0]}" style="display:none"></div>
     `;
     permListElem.appendChild(row);
   });
 }
+function populateServiceWorkerUI() {
+  const listElem = els.analysisContainer.querySelector(
+    "#ai-serviceworker-list",
+  );
+
+  if (!listElem) return;
+
+  listElem.innerHTML = "";
+
+  const ul = document.createElement("ul");
+  ul.className = "analysis-bullet-list";
+  ul.id = "ai-serviceworker-bullets";
+
+  listElem.appendChild(ul);
+}
+
+function populateServiceWorkerUI(fetchCalls) {
+  const listElem = els.analysisContainer.querySelector(
+    "#ai-serviceworker-list",
+  );
+
+  if (!listElem) return;
+
+  listElem.innerHTML = "";
+
+  if (!Array.isArray(fetchCalls) || fetchCalls.length === 0) {
+    listElem.innerHTML = `
+      <div style="color:#666">
+        No background network activity detected
+      </div>
+    `;
+    return;
+  }
+
+  const ul = document.createElement("ul");
+  ul.className = "analysis-bullet-list";
+
+  fetchCalls.forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = item;
+    ul.appendChild(li);
+  });
+
+  listElem.appendChild(ul);
+}
+
+function populateServiceWorkerUI(fetchCalls) {
+  const listElem = els.analysisContainer.querySelector(
+    "#ai-serviceworker-list",
+  );
+
+  if (!listElem) return;
+
+  listElem.innerHTML = "";
+
+  if (!Array.isArray(fetchCalls) || fetchCalls.length === 0) {
+    listElem.innerHTML = `
+      <div style="grid-column:1/-1;color:#666">
+        No background network activity detected
+      </div>
+    `;
+    return;
+  }
+
+  fetchCalls.forEach((call) => {
+    const key =
+      call.id || call.resolvedUrlExpression || call.urlExpression || "unknown";
+    const safeKey = escapeHtml(key);
+
+    const row = document.createElement("div");
+    row.className = "permission-row";
+
+    row.innerHTML = `
+      <div class="permission-name" data-bg-key="${safeKey}">
+        <span style="opacity:0.7">▹</span>
+        <span>${call.resolvedUrlExpression}</span>
+      </div>
+      <div
+        class="perm-status unknown"
+        data-bg-status="${safeKey}"
+      >
+        pending
+      </div>
+
+      <div
+        class="permission-reason"
+        data-bg-reason="${safeKey}"
+        style="display:none"
+      ></div>
+    `;
+
+    listElem.appendChild(row);
+  });
+}
+
+async function geminiAnalyze({ apiKey, manifest, messages }) {
+  //combine this and below function
+  const permissions = [
+    ...(manifest.permissions || []),
+    ...(manifest.host_permissions || []),
+    ...(manifest.optional_permissions || []),
+  ];
+
+  const permsText = permissions.length
+    ? permissions.map((p) => `- ${p}`).join("\n")
+    : "none";
+
+  const localeMessagesText = messages
+    ? Object.entries(messages)
+        .map(([k, v]) => `${k}: "${(v.message || "").replace(/\n/g, "\\n")}"`)
+        .join("\n")
+    : "";
+
+  const prompt = buildAIManifestPrompt(manifest, permsText, localeMessagesText);
+
+  return await generateGeminiResponse({
+    apiKey,
+    prompt,
+    enableSearch: true,
+  });
+}
+async function geminiAnalyzeServiceWorkers({
+  apiKey,
+  manifest,
+  messages,
+  fetchCalls,
+}) {
+  //combine this and below function
+  const permissions = [
+    ...(manifest.permissions || []),
+    ...(manifest.host_permissions || []),
+    ...(manifest.optional_permissions || []),
+  ];
+
+  const permsText = permissions.length
+    ? permissions.map((p) => `- ${p}`).join("\n")
+    : "none";
+
+  const localeMessagesText = messages
+    ? Object.entries(messages)
+        .map(([k, v]) => `${k}: "${(v.message || "").replace(/\n/g, "\\n")}"`)
+        .join("\n")
+    : "";
+
+  const fetchCallsText = fetchCalls.length
+    ? JSON.stringify(fetchCalls, null, 0)
+    : "none";
+
+  const prompt = buildAIServiceWorkerPrompt(
+    manifest,
+    permsText,
+    localeMessagesText,
+    fetchCallsText,
+  );
+
+  return await generateGeminiResponse({
+    apiKey,
+    prompt,
+    enableSearch: true,
+  });
+}
 
 function applyAIVerdicts(data) {
-  if (!data || !Array.isArray(data.verdicts)) return;
-  for (const v of data.verdicts) {
+  if (!data) return;
+
+  // manifest permissions
+  const manifestData = data["permissionAnalysis"];
+  if (!manifestData.verdicts) return;
+  for (const v of manifestData.verdicts) {
     const perm = String(v.permission);
     const verdict = (v.verdict || "unknown").toLowerCase();
     const reason = v.reason || "";
@@ -449,45 +847,62 @@ function applyAIVerdicts(data) {
       }
     }
   }
+
+  // service worker
+  const serviceWorkerData = data["serviceWorkerAnalysis"];
+  if (!serviceWorkerData.analysis) return;
+  for (const v of serviceWorkerData.analysis) {
+    const permKey = String(v.key);
+    const verdict = (v.verdict || "unknown").toLowerCase();
+    const reason = v.reason || "";
+
+    const statusElem = document.querySelector(
+      `.perm-status[data-bg-status="${escapeSelector(permKey)}"]`,
+    );
+    const permReasonElem = document.querySelector(
+      `.permission-reason[data-bg-reason="${escapeSelector(permKey)}"]`,
+    );
+    const permNameElem = document.querySelector(
+      `.permission-name[data-bg-key="${escapeSelector(permKey)}"]`,
+    );
+
+    if (!statusElem) {
+      // try to match normalized permission text
+      // skip if not found
+      continue;
+    }
+
+    statusElem.classList.remove("unknown", "ok", "suspicious"); //danger
+    if (verdict === "ok") {
+      statusElem.classList.add("ok");
+      statusElem.textContent = "ok";
+    } else if (verdict === "suspicious") {
+      statusElem.classList.add("suspicious");
+      statusElem.textContent = "suspicious";
+      if (permNameElem) permNameElem.style.borderLeft = "3px solid #ff9900";
+    } else if (verdict === "danger" || verdict === "dangerous") {
+      statusElem.classList.add("suspicious"); //danger
+      statusElem.textContent = "suspicious";
+      if (permNameElem) permNameElem.style.borderLeft = "3px solid #ff9900"; //#c53030";
+    } else {
+      statusElem.textContent = verdict;
+    }
+
+    if (permReasonElem) {
+      if (reason) {
+        permReasonElem.style.display = "block";
+        permReasonElem.textContent = reason;
+      } else {
+        permReasonElem.style.display = "none";
+      }
+    }
+  }
 }
-
-async function geminiAnalyzePermissions({ apiKey, manifest, messages }) {
-  //combine this and below function
-  const permissions = [
-    ...(manifest.permissions || []),
-    ...(manifest.host_permissions || []),
-    ...(manifest.optional_permissions || []),
-  ];
-
-  const permsText = permissions.length
-    ? permissions.map((p) => `- ${p}`).join("\n")
-    : "none";
-
-  const localeMessagesText = messages
-    ? Object.entries(messages)
-        .map(([k, v]) => `${k}: "${(v.message || "").replace(/\n/g, "\\n")}"`)
-        .join("\n")
-    : "";
-
-  const prompt = buildAIManifestPrompt(manifest, permsText, localeMessagesText);
-
-  return await generateGeminiResponse({
-    apiKey,
-    prompt,
-    enableSearch: true,
-  });
-}
-
-async function triggerAICheck(manifest, messages) {
-  const container = document.querySelector(".analysis-info-container");
-  const spinnerWrap = container.querySelector("#ai-spinner-wrapper");
-
+async function triggerAICheck(manifest, messages, fetchCalls) {
   const apiKey = document.getElementById("gemini-api-key-inp")?.value?.trim();
 
   // silently skip if no key
   if (!apiKey) return;
-
-  spinnerWrap.style.display = "inline-block";
 
   try {
     const modelText = await geminiAnalyzePermissions({
@@ -504,17 +919,40 @@ async function triggerAICheck(manifest, messages) {
         ? JSON.parse(txt.slice(start, end + 1))
         : JSON.parse(txt);
 
-    applyAIVerdicts(parsed);
+    // service worker analysis
+    if (!fetchCalls || !fetchCalls.length) {
+      applyAIVerdicts({ permissionAnalysis: parsed });
+      return;
+    }
+
+    const modelText2 = await geminiAnalyzeServiceWorkers({
+      apiKey,
+      manifest,
+      messages,
+      fetchCalls,
+    });
+
+    const txt2 = modelText2.trim(); //raw
+    const start2 = txt2.indexOf("{");
+    const end2 = txt2.lastIndexOf("}");
+    const parsed2 =
+      start !== -1 && end !== -1
+        ? JSON.parse(txt2.slice(start2, end2 + 1))
+        : JSON.parse(txt2);
+
+    applyAIVerdicts({
+      permissionAnalysis: parsed,
+      serviceWorkerAnalysis: parsed2,
+    });
   } catch (error) {
     console.log(error);
-    container.querySelector(".ai-summary").textContent = "AI analysis failed";
-  } finally {
-    spinnerWrap.style.display = "none";
+    els.analysisContainer.querySelector(".ai-summary").textContent =
+      "AI analysis failed";
   }
 }
 
 // Attach analyzer whenever extractedZip is available.
-export async function attachManifestAnalyzer() {
+export async function attachAnalyzer() {
   // clear previous UI
   const container = els.analysisContainer;
   if (!container) return;
@@ -531,13 +969,29 @@ export async function attachManifestAnalyzer() {
     return;
   }
 
+  // combine all background script sources into one text blob
+  let combinedBackgroundSource = "";
+
+  // reuse existing resolver logic
+  const backgroundFiles = await findServiceWorkerFiles(manifest);
+
+  for (const bg of backgroundFiles) {
+    if (!bg?.source) continue;
+
+    combinedBackgroundSource += `\n\n/* ===== BACKGROUND FILE: ${bg.path} ===== */\n\n`;
+    combinedBackgroundSource += bg.source;
+  }
+
+  console.log(combinedBackgroundSource, "serviceWorkderFetchCalls");
+
   // Render manifest basic info
   populateManifestUI(manifest);
+  populateServiceWorkerUI(combinedBackgroundSource);
 
   const { messages } = await findOneLocaleMessages();
-  console.log(messages);
+
   // trigger an automatic AI scan in background
-  triggerAICheck(manifest, messages);
+  triggerAICheck(manifest, messages, combinedBackgroundSource);
 }
 
 /* =========================
@@ -589,7 +1043,7 @@ async function analyzeCallback() {
     els.downloadExtSourceCode.onclick = downloadZip;
 
     renderFileTree(extractedZip);
-    attachManifestAnalyzer();
+    attachAnalyzer();
   } catch (err) {
     els.extAnalysisOutput.textContent = String(err);
   }
