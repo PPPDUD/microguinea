@@ -854,9 +854,9 @@ export async function attachAnalyzer() {
 ========================= */
 
 async function analyzeCallback() {
-  // const apiKey = els.apiKeyInput?.value?.trim();
+  const apiKey = els.apiKeyInput?.value?.trim();
   const id = els.extensionIdInput.value.trim();
-  if (!id) return;
+  if (!apiKey || !id) return;
 
   els.extAnalysisOutput.textContent = "Processing CRX...";
   // els.directoryTree.innerHTML = "";
