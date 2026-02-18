@@ -1,33 +1,46 @@
-export const $ = (id) => document.getElementById(id);
+export const $ = (selector) => document.querySelector(selector);
 
+// need to move the custom blocklist elements here
 export const els = {
-  scope: $("scope"),
-  windowMs: $("windowMs"),
-  search: $("search"),
-  autoRefresh: $("autoRefresh"),
-  refresh: $("refresh"),
-  clear: $("clear"),
-  openSettings: $("open-settings"),
-  exportJson: $("exportJson"),
+  windowMs: $("#windowMs"),
+  openSettings: $("#open-settings"),
 
-  kpis: $("kpis"),
-  byType: $("byType"),
-  byInitiator: $("byInitiator"),
-  byHost: $("byHost"),
-  byRule: $("byRule"),
+  // request viewer
+  scope: $("#scope"),
+  search: $("#search"),
+  autoRefresh: $("#autoRefresh"),
+  refresh: $("#refresh"),
+  clear: $("#clear"),
+  exportJson: $("#exportJson"),
+  kpis: $("#kpis"),
+  byType: $("#byType"),
+  byInitiator: $("#byInitiator"),
+  byHost: $("#byHost"),
+  byRule: $("#byRule"),
 
-  typeHint: $("typeHint"),
-  initHint: $("initHint"),
-  hostHint: $("hostHint"),
-  ruleHint: $("ruleHint"),
+  typeHint: $("#typeHint"),
+  initHint: $("#initHint"),
+  hostHint: $("#hostHint"),
+  ruleHint: $("#ruleHint"),
 
-  count: $("count"),
+  count: $("#count"),
   tbody: $("tbody"),
 
   // Cookie viewer elements
-  domainFilter: $("domainFilter"),
-  refreshCookies: $("refreshCookies"),
-  cookieCount: $("cookieCount"),
-  cookieTableBody: $("cookieTableBody"),
-  statusText: $("statusText"),
+  domainFilter: $("#domainFilter"),
+  refreshCookies: $("#refreshCookies"),
+  cookieCount: $("#cookieCount"),
+  cookieTableBody: $("#cookieTableBody"),
+  statusText: $("#statusText"),
+
+  // Extension Analysis
+  apiKeyInput: $("#gemini-api-key-inp"),
+  extensionIdInput: $("#extension-id-inp"),
+  extAnalyzeBtn: $("#ext-analyze-btn"),
+  downloadExtSourceCode: $("#download-ext-code"),
+  extAnalysisOutput: $("#output"),
+  // directoryTree: $("#directory-tree"),
+  // directoryFileViewer: $("#directory-file-viewer"),
+  // codeCopyBtn: $("#copy-code-btn"),
+  analysisContainer: $(".analysis-info-container"),
 };

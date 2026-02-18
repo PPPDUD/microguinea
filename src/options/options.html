@@ -32,6 +32,10 @@
                         Cookies Viewer
                     </button>
 
+                    <button class="nav-item" data-view="ext-analysis">
+                        Extension Analysis
+                    </button>
+
                     <button class="nav-item" data-view="about">About</button>
                 </nav>
 
@@ -286,7 +290,7 @@
                                             <th class="colTab">Tab</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="tbody"></tbody>
+                                    <tbody></tbody>
                                 </table>
                             </div>
                         </div>
@@ -340,6 +344,115 @@
                     </div>
                 </section>
 
+                <!-- Extension Analysis VIEW -->
+                <section id="view-ext-analysis" class="view-section">
+                    <header class="top-bar">
+                        <h1>Extension Analysis</h1>
+                    </header>
+
+                    <div class="form-grid">
+                        <div class="form-group form-grow">
+                            <label for="gemini-api-key">
+                                Gemini API Key (Optional)
+                                <br />
+                                <a href="https://aistudio.google.com/api-keys"
+                                    >Get yours from here</a
+                                >
+                            </label>
+                            <input
+                                id="gemini-api-key-inp"
+                                class="input-text"
+                                type="password"
+                                placeholder="AIza..."
+                            />
+                        </div>
+                        <div class="form-group form-grow">
+                            <label for="extension-id">
+                                Extension ID
+                                <br />
+                                <code>
+                                    chromewebstore.google.com/.../.../{extension_id}
+                                </code>
+                            </label>
+                            <input
+                                id="extension-id-inp"
+                                class="input-text"
+                                type="text"
+                                placeholder="e.g. fapldghopmonkbgaaiinpeopokpkhbmk"
+                            />
+                        </div>
+                        <button id="ext-analyze-btn" class="btn btn-primary">
+                            Analyze
+                        </button>
+                        <button
+                            id="download-ext-code"
+                            disabled
+                            class="btn btn-primary"
+                        >
+                            Download Source Code
+                        </button>
+                        <!--<button class="btn btn-primary" id="copy-code-btn">
+                            Copy Code
+                        </button>-->
+                    </div>
+                    <span id="output"></span>
+                    <!--<div class="directory-container">
+                        <div id="directory-tree">
+                            <template id="file-template">
+                                <span data-type="file">main</span>
+                            </template>
+                        </div>
+                        <div id="directory-file-viewer">
+                            <pre></pre>
+                        </div>
+                    </div>-->
+                    <div class="analysis-info-container">
+                        <div class="ai-header">
+                            <h2>Permissions analysis</h2>
+                            <div class="analysis-controls">
+                                <div
+                                    id="ai-spinner-wrapper"
+                                    style="display: none"
+                                >
+                                    <span class="ai-spinner"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div
+                            class="ai-summary"
+                            style="color: #444; font-size: 13px"
+                        >
+                            IDLE
+                        </div>
+
+                        <!-- TWO COLUMN GRID -->
+                        <div class="analysis-grid">
+                            <!-- LEFT: manifest permissions -->
+                            <div class="analysis-column">
+                                <h3 class="analysis-column-title">
+                                    manifest.js
+                                </h3>
+                                <div
+                                    class="analysis-permissions"
+                                    id="ai-permissions-list"
+                                ></div>
+                            </div>
+
+                            <!-- RIGHT: background.js fetch analysis -->
+                            <div class="analysis-column">
+                                <h3 class="analysis-column-title">
+                                    service_workers.js
+                                </h3>
+                                <div
+                                    class="analysis-serviceworker"
+                                    id="ai-serviceworker-list"
+                                ></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- ABOUT VIEW -->
                 <section id="view-about" class="view-section">
                     <div class="content-card">
@@ -357,7 +470,7 @@
                                 <div class="badge-shield">
                                     <span class="badge-label">Version</span>
                                     <span class="badge-value badge-value-blue"
-                                        >5.0.0</span
+                                        >6.0.0</span
                                     >
                                 </div>
                                 <div class="badge-shield">
