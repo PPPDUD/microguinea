@@ -34,12 +34,13 @@ export const els = {
   statusText: $("#statusText"),
 
   // Extension Analysis
+  apiKeyInput: $("#gemini-api-key-inp"),
   extensionIdInput: $("#extension-id-inp"),
   extAnalyzeBtn: $("#ext-analyze-btn"),
   downloadExtSourceCode: $("#download-ext-code"),
   extAnalysisOutput: $("#output"),
-  directoryTree: $("#directory-tree"),
-  directoryFileViewer: $("#directory-file-viewer"),
-  codeCopyBtn: $("#copy-code-btn"),
+  // directoryTree: $("#directory-tree"),
+  // directoryFileViewer: $("#directory-file-viewer"),
+  // codeCopyBtn: $("#copy-code-btn"),
   analysisContainer: $(".analysis-info-container"),
 };

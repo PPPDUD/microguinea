@@ -11,9 +11,9 @@ export function initExtensionAnalysis() {
   if (els.extAnalyzeBtn) {
     els.extAnalyzeBtn.addEventListener("click", analyzeCallback);
   }
-  if (els.codeCopyBtn) {
-    els.codeCopyBtn.addEventListener("click", copyCodeCallback);
-  }
+  // if (els.codeCopyBtn) {
+  //   els.codeCopyBtn.addEventListener("click", copyCodeCallback);
+  // }
 }
 
 /* =========================
@@ -115,88 +115,88 @@ async function downloadZip() {
   URL.revokeObjectURL(url);
 }
 
-/* =========================
-   Directory tree
-========================= */
+// /* =========================
+//    Directory tree
+// ========================= */
 
-function renderFileTree(zip) {
-  const tree = {};
+// function renderFileTree(zip) {
+//   const tree = {};
 
-  Object.keys(zip.files).forEach((path) => {
-    const parts = path.split("/").filter(Boolean);
-    let node = tree;
+//   Object.keys(zip.files).forEach((path) => {
+//     const parts = path.split("/").filter(Boolean);
+//     let node = tree;
 
-    parts.forEach((part, i) => {
-      if (!node[part]) {
-        node[part] = {
-          __path: parts.slice(0, i + 1).join("/"),
-          __isFile: i === parts.length - 1 && !zip.files[path].dir,
-          __children: {},
-        };
-      }
-      node = node[part].__children;
-    });
-  });
+//     parts.forEach((part, i) => {
+//       if (!node[part]) {
+//         node[part] = {
+//           __path: parts.slice(0, i + 1).join("/"),
+//           __isFile: i === parts.length - 1 && !zip.files[path].dir,
+//           __children: {},
+//         };
+//       }
+//       node = node[part].__children;
+//     });
+//   });
 
-  els.directoryTree.appendChild(buildTreeDom(tree));
-}
+//   els.directoryTree.appendChild(buildTreeDom(tree));
+// }
 
-function buildTreeDom(tree) {
-  const ul = document.createElement("ul");
+// function buildTreeDom(tree) {
+//   const ul = document.createElement("ul");
 
-  for (const key in tree) {
-    const item = tree[key];
-    const li = document.createElement("li");
+//   for (const key in tree) {
+//     const item = tree[key];
+//     const li = document.createElement("li");
 
-    const span = document.createElement("span");
-    span.textContent = key;
+//     const span = document.createElement("span");
+//     span.textContent = key;
 
-    if (item.__isFile) {
-      span.dataset.type = "file";
-      span.onclick = () => openFile(item.__path);
-    } else {
-      span.dataset.type = "folder";
-      span.onclick = () => {
-        li.classList.toggle("open");
-      };
-    }
+//     if (item.__isFile) {
+//       span.dataset.type = "file";
+//       span.onclick = () => openFile(item.__path);
+//     } else {
+//       span.dataset.type = "folder";
+//       span.onclick = () => {
+//         li.classList.toggle("open");
+//       };
+//     }
 
-    li.appendChild(span);
+//     li.appendChild(span);
 
-    const children = buildTreeDom(item.__children);
-    if (children.children.length) {
-      li.appendChild(children);
-    }
+//     const children = buildTreeDom(item.__children);
+//     if (children.children.length) {
+//       li.appendChild(children);
+//     }
 
-    ul.appendChild(li);
-  }
+//     ul.appendChild(li);
+//   }
 
-  return ul;
-}
+//   return ul;
+// }
 
-/* =========================
-   File viewer
-========================= */
+// /* =========================
+//    File viewer
+// ========================= */
 
-async function openFile(path) {
-  const file = extractedZip.files[path];
-  if (!file) return;
+// async function openFile(path) {
+//   const file = extractedZip.files[path];
+//   if (!file) return;
 
-  const raw = await file.async("text");
-  formattedCode = raw;
-  currentFile = path;
+//   const raw = await file.async("text");
+//   formattedCode = raw;
+//   currentFile = path;
 
-  els.directoryFileViewer.querySelector("pre").textContent = formattedCode;
-}
+//   els.directoryFileViewer.querySelector("pre").textContent = formattedCode;
+// }
 
-async function copyCodeCallback() {
-  if (!formattedCode) {
-    alert("please select a file");
-    return;
-  }
-  await navigator.clipboard.writeText(formattedCode);
-  alert("copied code of " + currentFile);
-}
+// async function copyCodeCallback() {
+//   if (!formattedCode) {
+//     alert("please select a file");
+//     return;
+//   }
+//   await navigator.clipboard.writeText(formattedCode);
+//   alert("copied code of " + currentFile);
+// }
 
 /* =========================
    Manifest analysis UI + AI integration
@@ -228,6 +228,7 @@ async function generateGeminiResponse({ apiKey, prompt, enableSearch = true }) {
   } catch (error) {
     console.log(error);
     alert(error.toString());
+    return "";
   }
 }
 
@@ -764,7 +765,7 @@ function applyAIVerdicts(data) {
   }
 }
 async function triggerAICheck(manifest, messages, bgSource) {
-  const apiKey = document.getElementById("gemini-api-key-inp")?.value?.trim();
+  const apiKey = els.apiKeyInput?.value?.trim();
 
   // silently skip if no key
   if (!apiKey) return;
@@ -790,16 +791,18 @@ async function triggerAICheck(manifest, messages, bgSource) {
     const start2 = txt2.indexOf("{");
     const end2 = txt2.lastIndexOf("}");
     const parsed2 =
-      start !== -1 && end !== -1
-        ? JSON.parse(txt2.slice(start2, end2 + 1))
-        : JSON.parse(txt2);
+      txt2.length == 0
+        ? ""
+        : start !== -1 && end !== -1
+          ? JSON.parse(txt2.slice(start2, end2 + 1))
+          : JSON.parse(txt2);
 
     applyAIVerdicts({
       permissionAnalysis: parsed,
       serviceWorkerAnalysis: parsed2,
     });
   } catch (error) {
-    console.log(error);
+    console.log("error", error);
     els.analysisContainer.querySelector(".ai-summary").textContent =
       "AI analysis failed";
   }
@@ -851,12 +854,13 @@ export async function attachAnalyzer() {
 ========================= */
 
 async function analyzeCallback() {
+  // const apiKey = els.apiKeyInput?.value?.trim();
   const id = els.extensionIdInput.value.trim();
   if (!id) return;
 
   els.extAnalysisOutput.textContent = "Processing CRX...";
-  els.directoryTree.innerHTML = "";
-  els.directoryFileViewer.querySelector("pre").textContent = "";
+  // els.directoryTree.innerHTML = "";
+  // els.directoryFileViewer.querySelector("pre").textContent = "";
 
   try {
     const url = "https://clients2.google.com/service/update2/crx";
@@ -894,7 +898,7 @@ async function analyzeCallback() {
     els.downloadExtSourceCode.disabled = false;
     els.downloadExtSourceCode.onclick = downloadZip;
 
-    renderFileTree(extractedZip);
+    // renderFileTree(extractedZip);
     attachAnalyzer();
   } catch (err) {
     els.extAnalysisOutput.textContent = String(err);
