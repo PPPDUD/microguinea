@@ -394,12 +394,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 chrome.runtime.onInstalled.addListener(async function (object) {
-  // chrome.storage.local.clear();
   // rebuildActionCache().catch(() => {});
   chrome.storage.local.set({ paused: false });
 
+  chrome.tabs.create({ url: "options.html?tab=about" });
   // chrome.tabs.create({ url: "options.html?tab=about" });
   if (object.reason === chrome.runtime.OnInstalledReason.INSTALL) {
+    chrome.storage.local.clear();
+
     // 1. Get all existing dynamic rules
     const existingRules = await chrome.declarativeNetRequest.getDynamicRules();
     const ruleIds = existingRules.map((rule) => rule.id);
@@ -411,8 +413,6 @@ chrome.runtime.onInstalled.addListener(async function (object) {
       });
       console.log("All dynamic rules cleared on install.");
     }
-
-    chrome.storage.local.clear();
 
     await chrome.storage.local.set({
       globalToggles: {

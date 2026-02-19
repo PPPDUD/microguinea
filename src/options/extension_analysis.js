@@ -11,9 +11,27 @@ export function initExtensionAnalysis() {
   if (els.extAnalyzeBtn) {
     els.extAnalyzeBtn.addEventListener("click", analyzeCallback);
   }
+
   // if (els.codeCopyBtn) {
   //   els.codeCopyBtn.addEventListener("click", copyCodeCallback);
   // }
+
+  if (els.apiKeyInput && els.extensionIdInput) {
+    els.apiKeyInput.addEventListener("keyup", (e) => {
+      if (els.apiKeyInput.value.length && els.extensionIdInput.value.length) {
+        els.extAnalyzeBtn.disabled = false;
+      } else {
+        els.extAnalyzeBtn.disabled = true;
+      }
+    });
+    els.extensionIdInput.addEventListener("keyup", (e) => {
+      if (els.apiKeyInput.value.length && els.extensionIdInput.value.length) {
+        els.extAnalyzeBtn.disabled = false;
+      } else {
+        els.extAnalyzeBtn.disabled = true;
+      }
+    });
+  }
 }
 
 /* =========================
@@ -456,12 +474,7 @@ Strict formatting rules:
 
 async function findManifestJson() {
   if (!extractedZip) return null;
-  // const manifestPaths = [
-  //   "manifest.json",
-  //   "src/manifest.json",
-  //   "dist/manifest.json",
-  //   "app/manifest.json",
-  // ];
+
   for (const p of Object.keys(extractedZip.files)) {
     if (p.toLowerCase().endsWith("manifest.json")) {
       try {
@@ -895,8 +908,8 @@ async function analyzeCallback() {
     currentExtensionId = id;
 
     els.extAnalysisOutput.textContent = "";
-    els.downloadExtSourceCode.disabled = false;
-    els.downloadExtSourceCode.onclick = downloadZip;
+    // els.downloadExtSourceCode.disabled = false;
+    // els.downloadExtSourceCode.onclick = downloadZip;
 
     // renderFileTree(extractedZip);
     attachAnalyzer();
