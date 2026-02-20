@@ -60,6 +60,18 @@ function renderCookies(cookies) {
           <td title="${formatExpires(cookie)}">${formatExpires(cookie)}</td>
           <td>${cookie.secure ? "✅" : ""}</td>
           <td>${cookie.httpOnly ? "✅" : ""}</td>
+          <td class="actions-cell" style="white-space:nowrap;">
+                <button
+                  class="btn btnSmall btn-danger"
+                  data-deletecookie
+                  data-name="${escapeHtml(cookie.name)}"
+                  data-domain="${escapeHtml(cookie.domain)}"
+                  data-path="${escapeHtml(cookie.path || "/")}"
+                  data-secure="${cookie.secure}"
+                >
+                  Delete
+                </button>
+              </td>
         </tr>
       `;
     })
@@ -97,6 +109,47 @@ function bindRowActions() {
         const span = btn.closest("td").querySelector(".cookieValueText");
         const value = span.dataset.full || span.textContent || "";
         await navigator.clipboard.writeText(value);
+      });
+    });
+
+  els.cookieTableBody
+    .querySelectorAll("button[data-deletecookie]")
+    .forEach((btn) => {
+      btn.addEventListener("click", async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        const name = btn.getAttribute("data-name");
+        const domain = btn.getAttribute("data-domain");
+        let path = btn.getAttribute("data-path") || "/";
+        const secure = btn.getAttribute("data-secure") === "true";
+
+        try {
+          // normalize path
+          if (!path.startsWith("/")) path = "/" + path;
+
+          const protocol = secure ? "https:" : "http:";
+          const host = domain.replace(/^\./, "");
+          const url = `${protocol}//${host}${path}`;
+
+          // chrome.cookies.remove uses callback style in many environments, wrap for await
+          await new Promise((resolve) =>
+            chrome.cookies.remove({ url, name }, resolve),
+          );
+
+          // update local state and UI
+          allCookies = allCookies.filter(
+            (c) => !(c.name === name && c.domain === domain),
+          );
+
+          filterCookies();
+          if (els.statusText)
+            els.statusText.textContent = `Deleted cookie ${name}`;
+        } catch (err) {
+          console.error(err);
+          if (els.statusText)
+            els.statusText.textContent = "Failed to delete cookie";
+        }
       });
     });
 }

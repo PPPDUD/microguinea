@@ -507,7 +507,14 @@ body[data-scope="active"] td.colTabCell {
     padding: 4px 8px;
     font-size: 11px;
 }
-
+.actions-cell {
+    text-align: center;
+    width: 90px;
+}
+.btn-danger {
+    background: #e53935;
+    color: white;
+}
 /* =======================
     extension analysis
 ===========================*/
